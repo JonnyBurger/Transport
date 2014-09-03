@@ -7,6 +7,7 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Serializer\Serializer;
 use Symfony\Component\Serializer\Encoder\JsonEncoder;
 use Symfony\Component\HttpKernel\Debug\ErrorHandler;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 use Transport\Entity\Location\Station;
 use Transport\Entity\Location\LocationQuery;
@@ -30,7 +31,10 @@ $app['buzz.client'] = null;
 $app['monolog.level'] = Monolog\Logger::ERROR;
 $app['xhprof'] = false;
 $app['redis.config'] = false; // array('host' => 'localhost', 'port' => 6379);
+$app['stats.config'] = array('enabled' => false);
+$app['rate_limiting.config'] = array('enabled' => false, 'limit' => 150);
 $app['proxy'] = false;
+$app['proxy_server.address'] = null;
 
 /// load config
 $config = __DIR__.'/../config.php';
@@ -45,6 +49,16 @@ if ($app['http_cache']) {
 	    'http_cache.options' => array('debug' => $app['debug']),
 	));
 }
+
+// Exception handler
+$app->error(function (\Exception $e, $code) use ($app) {
+
+    $errors = array(array('message' => $e->getMessage()));
+
+    $result = array('errors' => $errors);
+
+    return $app->json($result, $code);
+});
 
 // Monolog
 $app->register(new Silex\Provider\MonologServiceProvider(), array(
@@ -63,7 +77,11 @@ if ($app['xhprof']) {
 
 // if hosted behind a reverse proxy
 if ($app['proxy']) {
-    Request::trustProxyData();
+    $proxies = array($_SERVER['REMOTE_ADDR']);
+    if (is_array($app['proxy'])) {
+        $proxies = $app['proxy'];
+    }
+    Request::setTrustedProxies($proxies);
 }
 
 // Initialize buzz client
@@ -88,7 +106,7 @@ $app['serializer'] = $app->share(function () use ($app) {
 });
 
 
-// statistics
+// Redis
 $redis = null;
 try {
     if ($app['redis.config']) {
@@ -99,12 +117,40 @@ try {
     $app['monolog']->addError($e->getMessage());
     $redis = null;
 }
-$app['stats'] = new Transport\Statistics($redis);
+
+// statistics
+$app['stats'] = new Transport\Statistics($redis, $app['stats.config']['enabled']);
 $app->after(function (Request $request, Response $response) use ($app) {
     $app['stats']->call();
     $app['stats']->resource($request->getPathInfo());
 });
 
+// rate limiting
+$app['rate_limiting'] = new Transport\RateLimiting($redis, $app['rate_limiting.config']['enabled'], $app['rate_limiting.config']['limit']);
+
+$app->before(function (Request $request) use ($app) {
+
+    if ($app['rate_limiting']->isEnabled()) {
+
+        $ip = $request->getClientIp();
+        if ($app['rate_limiting']->hasReachedLimit($ip)) {
+            throw new HttpException(429, 'Rate limit of ' . $app['rate_limiting']->getLimit() . ' requests per minute exceeded');
+        }
+        $app['rate_limiting']->increment($ip);
+    }
+});
+
+$app->after(function (Request $request, Response $response) use ($app) {
+
+    if ($app['rate_limiting']->isEnabled()) {
+
+        $ip = $request->getClientIp();
+
+        $response->headers->set('X-Rate-Limit-Limit', $app['rate_limiting']->getLimit());
+        $response->headers->set('X-Rate-Limit-Remaining', $app['rate_limiting']->getRemaining($ip));
+        $response->headers->set('X-Rate-Limit-Reset', $app['rate_limiting']->getReset());
+    }
+});
 
 // index
 $app->get('/', function(Request $request) use ($app) {

@@ -18,10 +18,16 @@ class API
 
     const SBB_PROD = 'iPhone3.1';
     const SBB_VERSION = '2.3';
-    const SBB_ACCESS_ID = 'YJpyuPISerpXNNRTo50fNMP0yVu7L6IMuOaBgS0Xz89l3f6I3WhAjnto4kS9oz1';
+    const SBB_ACCESS_ID = 'vWjygiRIy0uclbLz4qDO7S3G4dcIIViwoLFCZlopGhe88vlsfedGIqctZP9lvqb';
 
     const SEARCH_MODE_NORMAL = 'N';
     const SEARCH_MODE_ECONOMIC = 'P';
+
+    /**
+     * Stationboard journeys with delays within this time frame are 
+     * prevented from causing an unintended day jump.
+     */
+    const STATIONBOARD_DELAY_FRAME = 21600; // 6 hours
 
     /**
      * @var Buzz\Browser
@@ -173,12 +179,13 @@ class API
         // and wrap it accordingly if time goes over midnight
         $journeys = array();
         // subtract one minute because SBB also returns results for one minute in the past
-        $prevTime = time() - 60;
+        $prevTime = strtotime($query->date->format('H:i')) - 60;
         $date = $query->date;
         if ($result->STBRes->JourneyList->STBJourney) {
             foreach ($result->STBRes->JourneyList->STBJourney as $journey) {
                 $curTime = strtotime((string) $journey->MainStop->BasicStop->Dep->Time);
-                if ($prevTime > $curTime) { // we passed midnight
+                if ($prevTime > $curTime && ($prevTime - $curTime) > self::STATIONBOARD_DELAY_FRAME) {
+                    // we passed midnight and the time jumped more than the delay frame
                     $date->add(new \DateInterval('P1D'));
                 }
                 $journeys[] = Entity\Schedule\StationBoardJourney::createFromXml($journey, $date, null);

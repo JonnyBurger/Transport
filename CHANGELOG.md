@@ -1,5 +1,17 @@
 # Changelog
 
+## 2014-06-15
+
+- Added error handler for JSON error messages
+- Added separate stats config, they need to be explicitly enabled with stats.config now
+- Added optional rate limiting (requires Redis)
+
+## 2013-10-15
+
+- #75 Fix for incorrect date for delays in stationboard
+- #95 Replaced deprecated trustProxyData
+- #93 Added support for proxy servers
+
 ## 2013-09-05
 
 - Improved stationboard location lookup, only search for stations

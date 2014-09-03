@@ -32,7 +32,7 @@ class APITest extends \PHPUnit_Framework_TestCase
                         'Content-Type: application/xml'
                 )),
                 $this->equalTo('<?xml version="1.0" encoding="iso-8859-1"?>
-<ReqC lang="EN" prod="iPhone3.1" ver="2.3" accessId="YJpyuPISerpXNNRTo50fNMP0yVu7L6IMuOaBgS0Xz89l3f6I3WhAjnto4kS9oz1"><LocValReq id="from" sMode="1"><ReqLoc match="Zürich" type="ALLTYPE"/></LocValReq><LocValReq id="to" sMode="1"><ReqLoc match="Bern" type="ALLTYPE"/></LocValReq></ReqC>
+<ReqC lang="EN" prod="iPhone3.1" ver="2.3" accessId="vWjygiRIy0uclbLz4qDO7S3G4dcIIViwoLFCZlopGhe88vlsfedGIqctZP9lvqb"><LocValReq id="from" sMode="1"><ReqLoc match="Zürich" type="ALLTYPE"/></LocValReq><LocValReq id="to" sMode="1"><ReqLoc match="Bern" type="ALLTYPE"/></LocValReq></ReqC>
 ')
             )
             ->will($this->returnValue($response));
@@ -116,7 +116,7 @@ class APITest extends \PHPUnit_Framework_TestCase
                         'Content-Type: application/xml'
                 )),
                 $this->equalTo('<?xml version="1.0" encoding="iso-8859-1"?>
-<ReqC lang="EN" prod="iPhone3.1" ver="2.3" accessId="YJpyuPISerpXNNRTo50fNMP0yVu7L6IMuOaBgS0Xz89l3f6I3WhAjnto4kS9oz1"><STBReq boardType="DEP" maxJourneys="40"><Time>23:55</Time><Period><DateBegin><Date>20120213</Date></DateBegin><DateEnd><Date>20120213</Date></DateEnd></Period><TableStation externalId="008591052"/><ProductFilter>1111111111111111</ProductFilter></STBReq></ReqC>
+<ReqC lang="EN" prod="iPhone3.1" ver="2.3" accessId="vWjygiRIy0uclbLz4qDO7S3G4dcIIViwoLFCZlopGhe88vlsfedGIqctZP9lvqb"><STBReq boardType="DEP" maxJourneys="40"><Time>23:55</Time><Period><DateBegin><Date>20120213</Date></DateBegin><DateEnd><Date>20120213</Date></DateEnd></Period><TableStation externalId="008591052"/><ProductFilter>1111111111111111</ProductFilter></STBReq></ReqC>
 ')
             )
             ->will($this->returnValue($response));
@@ -128,5 +128,32 @@ class APITest extends \PHPUnit_Framework_TestCase
         $this->assertEquals('2012-02-13T23:57:00+0100', $journeys[0]->stop->departure);
         $this->assertEquals('2012-02-13T23:58:00+0100', $journeys[1]->stop->departure);
         $this->assertEquals('2012-02-14T04:41:00+0100', $journeys[2]->stop->departure);
+    }
+
+    public function testGetStationBoardDelay() {
+        $response = new Response();
+        $response->setContent(file_get_contents(__DIR__ . '/../../fixtures/archive/stationboard-2013-10-15.xml'));
+
+        $this->browser->expects($this->once())
+            ->method('post')
+            ->with(
+                $this->equalTo('http://fahrplan.sbb.ch/bin/extxml.exe/'),
+                $this->equalTo(array(
+                        'User-Agent: SBBMobile/4.8 CFNetwork/609.1.4 Darwin/13.0.0',
+                        'Accept: application/xml',
+                        'Content-Type: application/xml'
+                )),
+                $this->equalTo('<?xml version="1.0" encoding="iso-8859-1"?>
+<ReqC lang="EN" prod="iPhone3.1" ver="2.3" accessId="vWjygiRIy0uclbLz4qDO7S3G4dcIIViwoLFCZlopGhe88vlsfedGIqctZP9lvqb"><STBReq boardType="DEP" maxJourneys="40"><Time>22:20</Time><Period><DateBegin><Date>20131015</Date></DateBegin><DateEnd><Date>20131015</Date></DateEnd></Period><TableStation externalId="008591052"/><ProductFilter>1111111111111111</ProductFilter></STBReq></ReqC>
+')
+            )
+            ->will($this->returnValue($response));
+
+        $station = new Station('008591052'); // ZÃ¼rich, BÃ¤ckeranlage
+        $journeys = $this->api->getStationBoard(new StationBoardQuery($station, \DateTime::createFromFormat(\DateTime::ISO8601, '2013-10-15T22:20:00+01:00')));
+
+        $this->assertEquals(1, count($journeys));
+        $this->assertEquals('2013-10-15T22:10:00+0100', $journeys[0]->stop->departure);
+        $this->assertEquals(12, $journeys[0]->stop->delay);
     }
 }
